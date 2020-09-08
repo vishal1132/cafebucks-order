@@ -1,6 +1,8 @@
 package main
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -15,7 +17,8 @@ import (
 )
 
 type handler struct {
-	l *zerolog.Logger
+	l  *zerolog.Logger
+	eb *eventbus.EB
 }
 
 type ctxKey uint8
@@ -27,7 +30,7 @@ const (
 )
 
 func (s *server) registerHandlers() {
-	h := handler{l: &s.Logger}
+	h := handler{l: &s.Logger, eb: s.EventBus}
 	s.Mux.HandleFunc("/orderservice/_health_/check", h.handleHealth)
 	s.Mux.HandleFunc("/order", h.handleCreateOrder).Methods("POST")
 	s.Mux.HandleFunc("/orders", h.handleGetOrders).Methods("GET")
@@ -133,7 +136,7 @@ func (h *handler) handleCreateOrder(w http.ResponseWriter, r *http.Request) {
 	}
 
 	io.WriteString(w, "Order Placed")
-	// Deduct Payment And Create Order
+	// Deduct Payment And Place Order
 
 	var order = eventbus.Order{}
 
@@ -141,6 +144,18 @@ func (h *handler) handleCreateOrder(w http.ResponseWriter, r *http.Request) {
 	order.Cof.Name = coffee
 	order.Cof.Price = price
 	order.Status = eventbus.OrderReceived
+
+	//Now create an order received event
+	var event = eventbus.EventC{
+		Order:   order,
+		Event:   eventbus.OrderReceived,
+		EventID: order.OrderID,
+	}
+	b, err := json.Marshal(event)
+	if err != nil {
+		lg.Error().Err(err).Msg("error marshaling event to slice of bytes")
+	}
+	h.eb.Publish(context.Background(), eventbus.OrderReceived, b)
 
 	lg.Info().
 		Str("OrderID", strconv.Itoa(order.OrderID)).

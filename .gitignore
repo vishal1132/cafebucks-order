@@ -5,7 +5,7 @@
 *.dylib
 
 #binaries
-server/order
+order
 
 *.test
 

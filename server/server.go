@@ -13,16 +13,17 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/rs/zerolog"
 	"github.com/vishal1132/cafebucks/config"
+	"github.com/vishal1132/cafebucks/eventbus"
 )
 
 // Server is the http server struct
 type server struct {
-	Mux    *mux.Router
-	Logger zerolog.Logger
+	Mux      *mux.Router
+	Logger   zerolog.Logger
+	EventBus *eventbus.EB
 }
 
 func runserver(cfg config.C, logger zerolog.Logger) error {
-	// set up signal caching
 	logger = logger.With().Str("context", "order service").Logger()
 	// set up signal caching
 	signalCh := make(chan os.Signal, 1)
@@ -36,6 +37,27 @@ func runserver(cfg config.C, logger zerolog.Logger) error {
 
 	defer cancel()
 
+	// initialize eventbus
+	ebcfg := eventbus.Config{
+		Logger: &logger,
+		Topic:  "test",
+	}
+	eb, err := eventbus.New(ebcfg)
+	if err != nil {
+		logger.Error().Err(err).Msg("Could not create an instance of eventbus")
+		return err
+	}
+
+	// Create an event reader in a concurrent go routine
+	/*
+		go func() {
+			msg, err := eb.ReadEvents(ctx)
+			if err != nil {
+				logger.With().Str("event read", "error").Err(err)
+			}
+			logger.Info().Str("Value", string(msg.Value)).Str("Key", string(msg.Key)).Msg("event received")
+		}()
+	*/
 	go func() {
 		sig := <-signalCh
 
@@ -47,8 +69,9 @@ func runserver(cfg config.C, logger zerolog.Logger) error {
 	}()
 
 	s := server{
-		Mux:    mux.NewRouter(),
-		Logger: logger,
+		Mux:      mux.NewRouter(),
+		Logger:   logger,
+		EventBus: eb,
 	}
 
 	s.registerHandlers()
