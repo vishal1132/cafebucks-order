@@ -23,6 +23,26 @@ type server struct {
 	EventBus *eventbus.EB
 }
 
+func (s *server) waitForServiceToBeUp(ctx context.Context, eb *eventbus.EB, l zerolog.Logger, topic, groupID string) {
+	l.Info().Msg("Getting order service up")
+	offset, err := eb.GetOffset(ctx, topic, groupID)
+	if err != nil {
+		l.Error().Err(err).Msg("failed to get offset")
+		return
+	}
+	if offset < 0 {
+		return
+	}
+	ebb := eb.NewReader([]string{"localhost:9092"}, topic)
+	for i := 0; i < int(offset); i++ {
+		msg, err := ebb.ReadEvents(context.Background())
+		if err != nil {
+			l.With().Str("context", "getting service up").Str("event read", "error").Err(err)
+		}
+		s.eventHandler(msg, false)
+	}
+}
+
 func runserver(cfg config.C, logger zerolog.Logger) error {
 	logger = logger.With().Str("context", "order service").Logger()
 	// set up signal caching
@@ -33,31 +53,48 @@ func runserver(cfg config.C, logger zerolog.Logger) error {
 		Str("env", string(cfg.Env)).
 		Str("log_level", cfg.LogLevel.String())
 
-	_, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(context.Background())
 
 	defer cancel()
 
 	// initialize eventbus
 	ebcfg := eventbus.Config{
-		Logger: &logger,
-		Topic:  "test",
+		Logger:  &logger,
+		Topic:   "test",
+		Brokers: []string{"localhost:9092"},
+		GroupID: "newordertest",
 	}
+
 	eb, err := eventbus.New(ebcfg)
 	if err != nil {
 		logger.Error().Err(err).Msg("Could not create an instance of eventbus")
 		return err
 	}
 
+	// eb.NewGen(ctx)
+	// fmt.Println(eb.GetOffsetGen(ctx, "test"))
+
+	s := server{
+		Mux:      mux.NewRouter(),
+		Logger:   logger,
+		EventBus: eb,
+	}
+
+	s.waitForServiceToBeUp(ctx, eb, logger, "test", "newordertest")
+	logger.Info().Msg("service is up now")
 	// Create an event reader in a concurrent go routine
-	/*
-		go func() {
+	go func() {
+		for {
 			msg, err := eb.ReadEvents(ctx)
 			if err != nil {
 				logger.With().Str("event read", "error").Err(err)
 			}
-			logger.Info().Str("Value", string(msg.Value)).Str("Key", string(msg.Key)).Msg("event received")
-		}()
-	*/
+			s.eventHandler(msg, true)
+		}
+	}()
+
+	// go eb.ReadEventsGen(ctx, "test")
+
 	go func() {
 		sig := <-signalCh
 
@@ -67,12 +104,6 @@ func runserver(cfg config.C, logger zerolog.Logger) error {
 			Str("signal", sig.String()).
 			Msg("shutting down http server gracefully")
 	}()
-
-	s := server{
-		Mux:      mux.NewRouter(),
-		Logger:   logger,
-		EventBus: eb,
-	}
 
 	s.registerHandlers()
 

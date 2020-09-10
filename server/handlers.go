@@ -47,23 +47,23 @@ func (h *handler) handleGetOrders(w http.ResponseWriter, r *http.Request) {
 	if ok {
 		l = l.Str("request id", rid)
 	}
-	lg := l.Logger()
+	// lg := l.Logger()
 
 	if len(orderMap) == 0 {
 		io.WriteString(w, "We didn't get any orders yet")
-		lg.Info().
-			Str("Order Count", "0").
-			Msg("No orders Available")
+		// lg.Info().
+		// 	Str("Order Count", "0").
+		// 	Msg("No orders Available")
 		return
 	}
 	for _, v := range orderMap {
 		io.WriteString(w, fmt.Sprintf("Order ID %d Coffee %s Price %v Status %s\n", v.OrderID, v.Cof.Name, v.Cof.Price, v.Status))
-		lg.Info().
-			Str("OrderId", strconv.Itoa(v.OrderID)).
-			Str("Coffee", v.Cof.Name).
-			Str("Price", strconv.FormatFloat(v.Cof.Price, 'g', 3, 64)).
-			Str("Status", string(v.Status)).
-			Msg("")
+		// lg.Info().
+		// 	Str("OrderId", strconv.Itoa(v.OrderID)).
+		// 	Str("Coffee", v.Cof.Name).
+		// 	Str("Price", strconv.FormatFloat(v.Cof.Price, 'g', 3, 64)).
+		// 	Str("Status", string(v.Status)).
+		// 	Msg("")
 	}
 }
 
